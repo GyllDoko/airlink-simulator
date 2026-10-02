@@ -1,0 +1,94 @@
+:root {
+  --ground: #e6ebee;
+  --panel: #f7f9fa;
+  --ink: #14202b;
+  --muted: #55626e;
+  --line: #c5cfd6;
+  --on: #0b7a64;
+  --off: #a8362a;
+  --unknown: #5d6a76;
+  --warn: #8a5a00;
+  --warn-bg: #fbefd2;
+  --alert-bg: #f7dcd8;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #10181f;
+    --panel: #18232c;
+    --ink: #e8eef2;
+    --muted: #9aa8b4;
+    --line: #2d3b47;
+    --on: #3ecfae;
+    --off: #ff7f6e;
+    --unknown: #93a1ad;
+    --warn: #f0c36a;
+    --warn-bg: #3a2f14;
+    --alert-bg: #43201c;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Avenir Next', 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+main { max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+h1 { font-size: 1.6rem; margin: 0 0 1rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 2rem 0 0.6rem; color: var(--muted); font-weight: 600; }
+
+.banner { margin: 0; padding: 0.65rem 0.9rem; border-radius: 4px; font-weight: 600; }
+.banner.warn { background: var(--warn-bg); color: var(--warn); }
+.banner.alert { background: var(--alert-bg); color: var(--off); }
+
+.tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+@media (max-width: 30rem) { .tiles { grid-template-columns: 1fr; } }
+
+.tile {
+  --c: var(--unknown);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'glyph label' 'glyph state';
+  column-gap: 0.9rem;
+  align-items: center;
+  padding: 1rem 1.1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--c);
+}
+.tile.on { --c: var(--on); }
+.tile.off { --c: var(--off); }
+.tile.unknown {
+  background-image: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--unknown) 14%, transparent) 7px 9px);
+}
+.tile-label { grid-area: label; color: var(--muted); font-size: 0.95rem; }
+.tile-state { grid-area: state; font-size: 1.7rem; font-weight: 700; color: var(--c); line-height: 1.15; }
+
+/* La forme porte l'information en plus de la couleur : disque plein, croix, anneau pointillé. */
+.glyph { grid-area: glyph; width: 2.2rem; height: 2.2rem; border-radius: 50%; border: 3px solid var(--c); }
+.tile.on .glyph { background: var(--c); }
+.tile.off .glyph {
+  background: linear-gradient(45deg, transparent 43%, var(--c) 43% 57%, transparent 57%),
+    linear-gradient(-45deg, transparent 43%, var(--c) 43% 57%, transparent 57%);
+}
+.tile.unknown .glyph { border-style: dashed; }
+
+.last { margin: 0; padding: 0.9rem 1.1rem; background: var(--panel); border: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; }
+.last strong, td { font-variant-numeric: tabular-nums; }
+.last .values { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 0.2rem 1.2rem; color: var(--muted); }
+.empty { color: var(--muted); margin: 0.4rem 0; }
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); }
+table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+th, td { text-align: left; padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+
+:focus-visible { outline: 3px solid var(--on); outline-offset: 2px; }
