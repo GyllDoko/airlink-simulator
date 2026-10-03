@@ -1,6 +1,6 @@
 import { buildApp } from './app';
 import { Monitor } from './monitor';
-import { Repository } from './repository';
+import { MemoryRepository } from './repository';
 
 function positiveInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -16,9 +16,9 @@ const port = positiveInt('PORT', 3000);
 const host = process.env.HOST ?? '127.0.0.1';
 // 15 s = trois cycles manqués du contrôleur (une mesure toutes les 5 s).
 const staleAfterMs = positiveInt('STALE_AFTER_MS', 15_000);
-const dataFile = process.env.DATA_FILE || undefined;
 
-const monitor = new Monitor(new Repository(dataFile), { staleAfterMs });
+const repository = new MemoryRepository();
+const monitor = new Monitor(repository, { staleAfterMs });
 const app = buildApp(monitor);
 
 // Enregistre le passage à « inconnu » même si personne n'interroge l'API.
@@ -27,6 +27,7 @@ const sweeper = setInterval(() => monitor.sweep(), 1000);
 const shutdown = async () => {
   clearInterval(sweeper);
   await app.close();
+  repository.close();
   process.exit(0);
 };
 process.on('SIGINT', shutdown);
@@ -34,5 +35,5 @@ process.on('SIGTERM', shutdown);
 
 await app.listen({ port, host });
 console.log(
-  `API prête sur http://${host}:${port} (inconnu après ${staleAfterMs} ms${dataFile ? `, journal : ${dataFile}` : ', sans persistance'})`,
+  `API prête sur http://${host}:${port} (inconnu après ${staleAfterMs} ms, stockage en mémoire)`,
 );

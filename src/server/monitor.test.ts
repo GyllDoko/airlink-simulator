@@ -1,9 +1,6 @@
-import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Monitor } from './monitor';
-import { Repository } from './repository';
+import { MemoryRepository } from './repository';
 import { FakeClock } from './test-utils';
 
 const STALE_AFTER = 15_000;
@@ -14,7 +11,7 @@ describe('Monitor', () => {
 
   beforeEach(() => {
     clock = new FakeClock();
-    monitor = new Monitor(new Repository(), { staleAfterMs: STALE_AFTER, clock: () => clock.now() });
+    monitor = new Monitor(new MemoryRepository(), { staleAfterMs: STALE_AFTER, clock: () => clock.now() });
   });
 
   describe('valeurs manquantes', () => {
@@ -146,41 +143,5 @@ describe('Monitor', () => {
       expect(last.events.map((e) => e.id)).toEqual([3, 2, 1]);
       expect(last.nextBefore).toBeNull();
     });
-  });
-});
-
-describe('persistance', () => {
-  let dir: string;
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'airlink-'));
-  });
-  afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it('retrouve événements, dernière mesure et état suivi après redémarrage', () => {
-    const file = join(dir, 'journal.jsonl');
-    const clock = new FakeClock();
-    const options = { staleAfterMs: STALE_AFTER, clock: () => clock.now() };
-
-    const before = new Monitor(new Repository(file), options);
-    before.ingest({ sourceA: true, load1: false });
-
-    const after = new Monitor(new Repository(file), options);
-    expect(after.getStatus().channels).toMatchObject({ sourceA: true, load1: false });
-    expect(after.listEvents(10).events).toHaveLength(2);
-
-    clock.advance(5000);
-    // L'état suivi a été restauré : pas de faux événement pour des valeurs inchangées.
-    expect(after.ingest({ sourceA: true, load1: false }).events).toEqual([]);
-    expect(after.ingest({ sourceA: false }).events[0]).toMatchObject({ id: 3 });
-  });
-
-  it('ignore une ligne corrompue du journal', () => {
-    const file = join(dir, 'journal.jsonl');
-    const repo = new Repository(file);
-    repo.addEvent({ at: 'x', channel: 'load1', from: null, to: true, reason: 'measurement' });
-    appendFileSync(file, '{"type":"event","data":{"id":2,\n'); // écriture interrompue
-    expect(new Repository(file).allEvents()).toHaveLength(1);
   });
 });

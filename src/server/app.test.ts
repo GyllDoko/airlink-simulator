@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app';
 import { Monitor } from './monitor';
-import { Repository } from './repository';
+import { MemoryRepository } from './repository';
 import { FakeClock } from './test-utils';
 
 describe('API', () => {
@@ -11,7 +11,7 @@ describe('API', () => {
 
   beforeEach(() => {
     clock = new FakeClock();
-    app = buildApp(new Monitor(new Repository(), { staleAfterMs: 15_000, clock: () => clock.now() }));
+    app = buildApp(new Monitor(new MemoryRepository(), { staleAfterMs: 15_000, clock: () => clock.now() }));
   });
 
   const post = (payload: unknown) => app.inject({ method: 'POST', url: '/api/measurements', payload: payload as object });

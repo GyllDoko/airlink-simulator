@@ -46,32 +46,35 @@ export class Monitor {
   ) {
     this.staleAfterMs = options.staleAfterMs;
     this.clock = options.clock ?? (() => new Date());
-    for (const event of repo.allEvents()) this.tracked[event.channel] = event.to;
+    Object.assign(this.tracked, repo.lastStates());
   }
 
   ingest(input: MeasurementInput): { measurement: Measurement; events: StateEvent[] } {
     const now = this.clock();
-    // Si la mesure précédente était déjà périmée, on l'enregistre d'abord : l'historique
-    // reste dans l'ordre (inconnu → nouvelle valeur).
-    const events = this.sweep(now);
+    // Mesure et événements sont écrits ensemble : tout ou rien.
+    return this.repo.transaction(() => {
+      // Si la mesure précédente était déjà périmée, on l'enregistre d'abord : l'historique
+      // reste dans l'ordre (inconnu → nouvelle valeur).
+      const events = this.sweep(now);
 
-    const values = normalise(input);
-    const measurement = this.repo.addMeasurement({
-      receivedAt: now.toISOString(),
-      measuredAt: input.measuredAt ?? null,
-      values,
+      const values = normalise(input);
+      const measurement = this.repo.addMeasurement({
+        receivedAt: now.toISOString(),
+        measuredAt: input.measuredAt ?? null,
+        values,
+      });
+
+      for (const channel of CHANNELS) {
+        const from = this.tracked[channel];
+        const to = values[channel];
+        if (from === to) continue;
+        events.push(
+          this.repo.addEvent({ at: measurement.receivedAt, channel, from, to, reason: 'measurement' }),
+        );
+        this.tracked[channel] = to;
+      }
+      return { measurement, events };
     });
-
-    for (const channel of CHANNELS) {
-      const from = this.tracked[channel];
-      const to = values[channel];
-      if (from === to) continue;
-      events.push(
-        this.repo.addEvent({ at: measurement.receivedAt, channel, from, to, reason: 'measurement' }),
-      );
-      this.tracked[channel] = to;
-    }
-    return { measurement, events };
   }
 
   /**
@@ -83,14 +86,16 @@ export class Monitor {
     if (!last || !this.isStale(last, now)) return [];
 
     const staleAt = new Date(Date.parse(last.receivedAt) + this.staleAfterMs).toISOString();
-    const events: StateEvent[] = [];
-    for (const channel of CHANNELS) {
-      const from = this.tracked[channel];
-      if (from === null) continue;
-      events.push(this.repo.addEvent({ at: staleAt, channel, from, to: null, reason: 'stale' }));
-      this.tracked[channel] = null;
-    }
-    return events;
+    return this.repo.transaction(() => {
+      const events: StateEvent[] = [];
+      for (const channel of CHANNELS) {
+        const from = this.tracked[channel];
+        if (from === null) continue;
+        events.push(this.repo.addEvent({ at: staleAt, channel, from, to: null, reason: 'stale' }));
+        this.tracked[channel] = null;
+      }
+      return events;
+    });
   }
 
   /** Calculé à partir de l'horloge : correct même si `sweep` n'a pas encore tourné. */
