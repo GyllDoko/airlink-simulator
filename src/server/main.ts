@@ -1,6 +1,6 @@
 import { buildApp } from './app';
 import { Monitor } from './monitor';
-import { MemoryRepository } from './repository';
+import { SqliteRepository } from './sqlite-repository';
 
 function positiveInt(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -17,7 +17,9 @@ const host = process.env.HOST ?? '127.0.0.1';
 // 15 s = trois cycles manqués du contrôleur (une mesure toutes les 5 s).
 const staleAfterMs = positiveInt('STALE_AFTER_MS', 15_000);
 
-const repository = new MemoryRepository();
+// ':memory:' pour une base volatile.
+const dbFile = process.env.DB_FILE || 'data/airlink.db';
+const repository = new SqliteRepository(dbFile);
 const monitor = new Monitor(repository, { staleAfterMs });
 const app = buildApp(monitor);
 
@@ -35,5 +37,5 @@ process.on('SIGTERM', shutdown);
 
 await app.listen({ port, host });
 console.log(
-  `API prête sur http://${host}:${port} (inconnu après ${staleAfterMs} ms, stockage en mémoire)`,
+  `API prête sur http://${host}:${port} (inconnu après ${staleAfterMs} ms, base SQLite : ${dbFile})`,
 );

@@ -1,18 +1,31 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Monitor } from './monitor';
-import { MemoryRepository } from './repository';
+import { MemoryRepository, type Repository } from './repository';
+import { SqliteRepository } from './sqlite-repository';
 import { FakeClock } from './test-utils';
 
 const STALE_AFTER = 15_000;
 
-describe('Monitor', () => {
+// La logique métier doit se comporter de la même façon quel que soit le stockage.
+const backends: Array<[string, () => Repository]> = [
+  ['mémoire', () => new MemoryRepository()],
+  ['SQLite', () => new SqliteRepository(':memory:')],
+];
+
+describe.each(backends)('Monitor (%s)', (_name, createRepository) => {
   let clock: FakeClock;
+  let repo: Repository;
   let monitor: Monitor;
 
   beforeEach(() => {
     clock = new FakeClock();
-    monitor = new Monitor(new MemoryRepository(), { staleAfterMs: STALE_AFTER, clock: () => clock.now() });
+    repo = createRepository();
+    monitor = new Monitor(repo, { staleAfterMs: STALE_AFTER, clock: () => clock.now() });
   });
+  afterEach(() => repo.close());
 
   describe('valeurs manquantes', () => {
     it('transforme une valeur absente en null, jamais en false ni en 0', () => {
@@ -143,5 +156,52 @@ describe('Monitor', () => {
       expect(last.events.map((e) => e.id)).toEqual([3, 2, 1]);
       expect(last.nextBefore).toBeNull();
     });
+  });
+});
+
+describe('Monitor : redémarrage avec SQLite', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'airlink-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('retrouve événements, dernière mesure et état suivi, sans faux événements', () => {
+    const file = join(dir, 'airlink.db');
+    const clock = new FakeClock();
+    const options = { staleAfterMs: STALE_AFTER, clock: () => clock.now() };
+
+    const firstRepo = new SqliteRepository(file);
+    new Monitor(firstRepo, options).ingest({ sourceA: true, load1: false });
+    firstRepo.close();
+
+    const secondRepo = new SqliteRepository(file);
+    const after = new Monitor(secondRepo, options);
+    expect(after.getStatus().channels).toMatchObject({ sourceA: true, load1: false });
+    expect(after.listEvents(10).events).toHaveLength(2);
+
+    clock.advance(5000);
+    expect(after.ingest({ sourceA: true, load1: false }).events).toEqual([]);
+    expect(after.ingest({ sourceA: false }).events[0]).toMatchObject({ id: 3 });
+    secondRepo.close();
+  });
+
+  it('enregistre le passage à inconnu après un arrêt plus long que le seuil', () => {
+    const file = join(dir, 'airlink.db');
+    const clock = new FakeClock();
+    const options = { staleAfterMs: STALE_AFTER, clock: () => clock.now() };
+
+    const firstRepo = new SqliteRepository(file);
+    new Monitor(firstRepo, options).ingest({ sourceA: true });
+    firstRepo.close();
+
+    clock.advance(10 * 60_000); // le serveur était arrêté
+    const secondRepo = new SqliteRepository(file);
+    const after = new Monitor(secondRepo, options);
+    expect(after.getStatus().freshness).toBe('stale');
+    expect(after.sweep()[0]).toMatchObject({ channel: 'sourceA', to: null, reason: 'stale' });
+    secondRepo.close();
   });
 });

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Supervision de deux sources d'énergie et de deux charges : API, historique d'événements et interface.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "scripts": {
     "start": "tsx src/server/main.ts",
