@@ -23,20 +23,20 @@ coupures complètes (plus aucun message) pour montrer le passage à « Inconnu �
 
 Autres commandes :
 
-| Commande | Rôle |
-| --- | --- |
-| `npm test` | tests unitaires et d'API (Vitest) |
+| Commande            | Rôle                                           |
+| ------------------- | ---------------------------------------------- |
+| `npm test`          | tests unitaires et d'API (Vitest)              |
 | `npm run typecheck` | vérification TypeScript (serveur et interface) |
-| `npm run build:web` | build de l'interface dans `web/dist` |
+| `npm run build:web` | build de l'interface dans `web/dist`           |
 
 Variables d'environnement du serveur :
 
-| Variable | Défaut | Rôle |
-| --- | --- | --- |
-| `PORT` | `3000` | port d'écoute |
-| `HOST` | `127.0.0.1` | adresse d'écoute |
-| `STALE_AFTER_MS` | `15000` | âge au-delà duquel la dernière mesure rend les états inconnus |
-| `DATA_FILE` | *(aucun)* | chemin d'un journal JSONL pour survivre à un redémarrage |
+| Variable         | Défaut      | Rôle                                                          |
+| ---------------- | ----------- | ------------------------------------------------------------- |
+| `PORT`           | `3000`      | port d'écoute                                                 |
+| `HOST`           | `127.0.0.1` | adresse d'écoute                                              |
+| `STALE_AFTER_MS` | `15000`     | âge au-delà duquel la dernière mesure rend les états inconnus |
+| `DATA_FILE`      | _(aucun)_   | chemin d'un journal JSONL pour survivre à un redémarrage      |
 
 ## Architecture
 
@@ -58,11 +58,11 @@ injectable, ce qui permet de tester l'expiration des mesures sans attendre.
 
 ## API
 
-| Méthode | Route | Description |
-| --- | --- | --- |
-| `POST` | `/api/measurements` | reçoit une mesure |
-| `GET` | `/api/status` | états courants, dernière mesure, fraîcheur |
-| `GET` | `/api/events?limit=50&before=<id>` | historique, du plus récent au plus ancien |
+| Méthode | Route                              | Description                                |
+| ------- | ---------------------------------- | ------------------------------------------ |
+| `POST`  | `/api/measurements`                | reçoit une mesure                          |
+| `GET`   | `/api/status`                      | états courants, dernière mesure, fraîcheur |
+| `GET`   | `/api/events?limit=50&before=<id>` | historique, du plus récent au plus ancien  |
 
 ```bash
 curl -X POST http://127.0.0.1:3000/api/measurements \
@@ -131,16 +131,3 @@ Seule la dernière mesure est gardée en mémoire (le journal les garde toutes).
   L'interface `Repository` isole ce choix.
 - L'interface interroge l'API toutes les 2 s (polling) ; des SSE ou WebSocket réduiraient la latence.
 - L'historique affiche les 100 événements les plus récents ; l'API gère déjà la pagination.
-
-## Utilisation de Claude
-
-Ce projet a été réalisé avec Claude (assistant IA d'Anthropic), dans le cadre du test.
-
-1. **Cadrage** : discussion des choix avant d'écrire du code (pile technique, représentation de
-   l'inconnu, définition de l'événement, seuil de péremption).
-2. **Implémentation par étapes**, avec un commit par étape : types, logique métier et tests, API,
-   simulateur, interface, documentation.
-3. **Vérification** : typecheck, tests, build de l'interface et essai de bout en bout avec `curl`
-   (mesure valide, mesure refusée, passage à inconnu).
-
-Les décisions de conception ci-dessus sont celles que j'ai validées et je peux les justifier.
