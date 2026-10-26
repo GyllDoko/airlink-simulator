@@ -92,16 +92,90 @@ describe.each(backends)("Monitor (%s)", (_name, createRepository) => {
       });
     });
 
-    it("enregistre le passage à inconnu quand une valeur disparaît", () => {
+    it("n'enregistre rien tout de suite quand une valeur disparaît", () => {
       monitor.ingest({ sourceA: true });
       clock.advance(5000);
-      const { events } = monitor.ingest({});
-      expect(events[0]).toMatchObject({
-        channel: "sourceA",
-        from: true,
-        to: null,
-        reason: "measurement",
-      });
+      expect(monitor.ingest({}).events).toEqual([]);
+    });
+  });
+
+  describe("élément absent pendant que les autres continuent", () => {
+    const ALL = { sourceA: true, sourceB: true, load1: true, load2: false };
+    // Les autres éléments continuent d'arriver toutes les 5 s, sans sourceA.
+    const others = { sourceB: false, load1: true, load2: true };
+
+    it("garde le dernier état de sourceA jusqu’au seuil inclus, les autres suivent", () => {
+      monitor.ingest(ALL);
+      for (let i = 0; i < 3; i++) {
+        clock.advance(5000);
+        expect(monitor.ingest(others).events.map((e) => e.channel)).not.toContain("sourceA");
+      }
+      const status = monitor.getStatus();
+      expect(status.freshness).toBe("fresh");
+      expect(status.channels).toEqual({ sourceA: true, ...others });
+      expect(status.seenAt.sourceA).toBe("2026-01-01T12:00:00.000Z");
+      expect(status.seenAt.sourceB).toBe("2026-01-01T12:00:15.000Z");
+    });
+
+    it("passe sourceA seul à inconnu juste après le seuil", () => {
+      monitor.ingest(ALL);
+      for (let i = 0; i < 3; i++) {
+        clock.advance(5000);
+        monitor.ingest(others);
+      }
+      clock.advance(1);
+      const status = monitor.getStatus();
+      expect(status.freshness).toBe("fresh");
+      expect(status.channels).toEqual({ sourceA: null, ...others });
+
+      const events = monitor.sweep();
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ channel: "sourceA", from: true, to: null, reason: "stale" });
+      expect(events[0]?.at).toBe("2026-01-01T12:00:15.000Z");
+      expect(monitor.sweep()).toEqual([]);
+    });
+
+    it("enregistre le stale de sourceA lors de la mesure suivante, avant les autres changements", () => {
+      monitor.ingest(ALL);
+      for (let i = 0; i < 3; i++) {
+        clock.advance(5000);
+        monitor.ingest({ sourceB: true, load1: true, load2: false });
+      }
+      clock.advance(5000);
+      const { events } = monitor.ingest({ sourceB: false });
+      expect(events.map((e) => [e.channel, e.to, e.reason])).toEqual([
+        ["sourceA", null, "stale"],
+        ["sourceB", false, "measurement"],
+      ]);
+    });
+
+    it("traite un null explicite comme une valeur absente", () => {
+      monitor.ingest(ALL);
+      clock.advance(10_000);
+      expect(monitor.ingest({ ...others, sourceA: null }).events.map((e) => e.channel)).not.toContain("sourceA");
+      expect(monitor.getStatus().channels.sourceA).toBe(true);
+    });
+
+    it("sourceA revient avant le seuil : aucun événement", () => {
+      monitor.ingest(ALL);
+      clock.advance(10_000);
+      monitor.ingest(others);
+      clock.advance(5000);
+      expect(monitor.ingest({ ...others, sourceA: true }).events).toEqual([]);
+    });
+
+    it("sourceA revient après le seuil : stale puis nouvelle valeur", () => {
+      monitor.ingest(ALL);
+      for (let i = 0; i < 3; i++) {
+        clock.advance(5000);
+        monitor.ingest(others);
+      }
+      clock.advance(5000);
+      const { events } = monitor.ingest({ ...others, sourceA: false });
+      expect(events.map((e) => [e.channel, e.from, e.to, e.reason])).toEqual([
+        ["sourceA", true, null, "stale"],
+        ["sourceA", null, false, "measurement"],
+      ]);
     });
   });
 
@@ -215,6 +289,32 @@ describe("Monitor : redémarrage avec SQLite", () => {
     clock.advance(5000);
     expect(after.ingest({ sourceA: true, load1: false }).events).toEqual([]);
     expect(after.ingest({ sourceA: false }).events[0]).toMatchObject({ id: 3 });
+    secondRepo.close();
+  });
+
+  it("retrouve la dernière valeur connue d'un élément absent", () => {
+    const file = join(dir, "airlink.db");
+    const clock = new FakeClock();
+    const options = { staleAfterMs: STALE_AFTER, clock: () => clock.now() };
+
+    const firstRepo = new SqliteRepository(file);
+    const before = new Monitor(firstRepo, options);
+    before.ingest({ sourceA: true, sourceB: true });
+    clock.advance(10_000);
+    before.ingest({ sourceB: true });
+    firstRepo.close();
+
+    const secondRepo = new SqliteRepository(file);
+    const after = new Monitor(secondRepo, options);
+    expect(after.getStatus().channels.sourceA).toBe(true);
+    clock.advance(5001);
+    after.ingest({ sourceB: true });
+    expect(after.getStatus().channels).toMatchObject({ sourceA: null, sourceB: true });
+    expect(after.listEvents(1).events[0]).toMatchObject({
+      channel: "sourceA",
+      reason: "stale",
+      at: "2026-01-01T12:00:15.000Z",
+    });
     secondRepo.close();
   });
 

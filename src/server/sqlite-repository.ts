@@ -1,7 +1,16 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { ChannelState, EventsPage, Measurement, Reading, StateEvent } from '../shared/types';
+import {
+  CHANNELS,
+  type Channel,
+  type ChannelState,
+  type EventsPage,
+  type LastSeen,
+  type Measurement,
+  type Reading,
+  type StateEvent,
+} from '../shared/types';
 import type { Repository } from './repository';
 
 /**
@@ -50,6 +59,14 @@ interface EventRow {
   reason: StateEvent['reason'];
 }
 
+/** Colonne de la table `measurements` pour chaque élément. */
+const COLUMNS: Record<Channel, string> = {
+  sourceA: 'source_a',
+  sourceB: 'source_b',
+  load1: 'load1',
+  load2: 'load2',
+};
+
 const toDb = (state: ChannelState): number | null => (state === null ? null : state ? 1 : 0);
 const fromDb = (value: number | null): ChannelState => (value === null ? null : value === 1);
 
@@ -82,6 +99,7 @@ export class SqliteRepository implements Repository {
   private readonly selectLatest: StatementSync;
   private readonly selectLastState: StatementSync;
   private readonly selectEvents: StatementSync;
+  private readonly selectLastSeen: Record<Channel, StatementSync>;
   private depth = 0;
 
   constructor(path: string) {
@@ -105,6 +123,17 @@ export class SqliteRepository implements Repository {
     this.selectEvents = this.db.prepare(
       'SELECT * FROM events WHERE (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?',
     );
+    const lastSeenQuery = (channel: Channel): StatementSync =>
+      this.db.prepare(
+        `SELECT received_at, ${COLUMNS[channel]} AS value FROM measurements
+         WHERE ${COLUMNS[channel]} IS NOT NULL ORDER BY id DESC LIMIT 1`,
+      );
+    this.selectLastSeen = {
+      sourceA: lastSeenQuery('sourceA'),
+      sourceB: lastSeenQuery('sourceB'),
+      load1: lastSeenQuery('load1'),
+      load2: lastSeenQuery('load2'),
+    };
   }
 
   addMeasurement(data: Omit<Measurement, 'id'>): Measurement {
@@ -136,6 +165,15 @@ export class SqliteRepository implements Repository {
       return row ? fromDb(row.to_state) : null;
     };
     return { sourceA: state('sourceA'), sourceB: state('sourceB'), load1: state('load1'), load2: state('load2') };
+  }
+
+  lastSeen(): Record<Channel, LastSeen | null> {
+    const seen: Record<Channel, LastSeen | null> = { sourceA: null, sourceB: null, load1: null, load2: null };
+    for (const channel of CHANNELS) {
+      const row = this.selectLastSeen[channel].get() as unknown as { received_at: string; value: number } | undefined;
+      if (row) seen[channel] = { at: row.received_at, value: row.value === 1 };
+    }
+    return seen;
   }
 
   listEvents(limit: number, beforeId?: number): EventsPage {

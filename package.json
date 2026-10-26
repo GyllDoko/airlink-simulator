@@ -13,6 +13,7 @@
     "dev:web": "vite --config web/vite.config.ts",
     "build:web": "vite build --config web/vite.config.ts",
     "simulate": "tsx src/simulator/index.ts",
+    "simulate:random": "SIM_MODE=random tsx src/simulator/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit"
   },

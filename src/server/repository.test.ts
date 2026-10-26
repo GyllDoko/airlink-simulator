@@ -59,6 +59,23 @@ describe.each(backends)('Repository (%s)', (_name, create) => {
     expect(repo.lastStates()).toEqual({ sourceA: null, sourceB: null, load1: false, load2: null });
   });
 
+  it('retrouve la dernière valeur non nulle de chaque élément, null si jamais reçue', () => {
+    expect(repo.lastSeen()).toEqual({ sourceA: null, sourceB: null, load1: null, load2: null });
+    repo.addMeasurement(measurement({ sourceA: true, sourceB: false }));
+    repo.addMeasurement({ ...measurement({ sourceB: true }), receivedAt: '2026-01-01T12:00:05.000Z' });
+    expect(repo.lastSeen()).toEqual({
+      sourceA: { at: '2026-01-01T12:00:00.000Z', value: true },
+      sourceB: { at: '2026-01-01T12:00:05.000Z', value: true },
+      load1: null,
+      load2: null,
+    });
+  });
+
+  it('lastSeen conserve false (false n’est pas une valeur absente)', () => {
+    repo.addMeasurement(measurement({ load1: false }));
+    expect(repo.lastSeen().load1).toEqual({ at: '2026-01-01T12:00:00.000Z', value: false });
+  });
+
   it('pagine les événements du plus récent au plus ancien', () => {
     for (let i = 0; i < 5; i++) {
       repo.addEvent({ at: `t${i}`, channel: 'load1', from: i % 2 === 0, to: i % 2 !== 0, reason: 'measurement' });

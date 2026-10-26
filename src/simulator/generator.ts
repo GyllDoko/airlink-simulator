@@ -36,3 +36,27 @@ export function toPayload(truth: Truth, rng: Rng, rates: FaultRates = DEFAULT_RA
   }
   return payload;
 }
+
+/**
+ * Scénario « sourceA disparaît » : un cycle de 12 messages (60 s à 5 s par message).
+ * - `present` : les 4 éléments sont envoyés.
+ * - `short-gap` : sourceA absent 2 messages (10 s) — le backend doit garder son dernier état.
+ * - `long-gap` : sourceA absent 5 messages (25 s) — le backend doit le passer à inconnu après 15 s.
+ * sourceB, load1 et load2 sont toujours envoyés.
+ */
+export const SOURCE_A_DROPOUT_CYCLE = 12;
+export type SourceAPhase = 'present' | 'short-gap' | 'long-gap';
+
+export function sourceAPhase(step: number): SourceAPhase {
+  const position = step % SOURCE_A_DROPOUT_CYCLE;
+  if (position === 3 || position === 4) return 'short-gap';
+  if (position >= 7) return 'long-gap';
+  return 'present';
+}
+
+/** Message de l'étape `step` : sourceA est omis (champ absent, pas `null`) pendant les absences. */
+export function sourceADropoutPayload(truth: Truth, step: number): Record<string, boolean | null> {
+  const payload: Record<string, boolean | null> = { ...truth };
+  if (sourceAPhase(step) !== 'present') delete payload.sourceA;
+  return payload;
+}

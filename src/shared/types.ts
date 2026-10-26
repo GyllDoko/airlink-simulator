@@ -20,6 +20,12 @@ export interface Measurement {
   values: Reading;
 }
 
+/** Dernière valeur connue (non nulle) d'un élément et date de réception. */
+export interface LastSeen {
+  at: string;
+  value: boolean;
+}
+
 export type EventReason = 'measurement' | 'stale';
 
 /** Changement d'état d'un élément. */
@@ -41,8 +47,13 @@ export interface Status {
   freshness: Freshness;
   ageMs: number | null;
   lastMeasurement: Measurement | null;
-  /** États courants : tous `null` si aucune mesure ou mesure trop ancienne. */
+  /**
+   * États courants, par élément : dernière valeur connue tant qu'elle date de moins de
+   * `staleAfterMs`, sinon `null`. Un élément absent des mesures garde donc son état un temps.
+   */
   channels: Reading;
+  /** Date de réception de la dernière valeur connue de chaque élément, `null` si jamais vu. */
+  seenAt: Record<Channel, string | null>;
 }
 
 export interface EventsPage {
